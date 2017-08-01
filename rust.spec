@@ -17,12 +17,9 @@
 # To bootstrap from scratch, set the channel and date from src/stage0.txt
 # e.g. 1.10.0 wants rustc: 1.9.0-2016-05-24
 # or nightly wants some beta-YYYY-MM-DD
-# TEMP: using the current version to bootstrap rust-toolset
-#global bootstrap_rust 1.16.0
 %global bootstrap_rust 1.17.0
-%global bootstrap_cargo 0.17.0
+%global bootstrap_cargo 0.18.0
 %global bootstrap_channel %{bootstrap_rust}
-#global bootstrap_date 2017-03-11
 %global bootstrap_date 2017-04-27
 
 # Only the specified arches will use bootstrap binaries.
@@ -47,7 +44,7 @@
 # LLDB only works on some architectures
 %ifarch %{arm} aarch64 %{ix86} x86_64
 # LLDB isn't available everywhere...
-%if !0%{?rhel}
+%if !0%{?rhel} || 0%{?scl:%{?rhel}} >= 7
 %bcond_without lldb
 %else
 %bcond_with lldb
@@ -59,8 +56,8 @@
 
 
 Name:           %{?scl_prefix}rust
-Version:        1.17.0
-Release:        2%{?dist}
+Version:        1.18.0
+Release:        1%{?dist}
 Summary:        The Rust Programming Language
 License:        (ASL 2.0 or MIT) and (BSD and ISC and MIT)
 # ^ written as: (rust itself) and (bundled libraries)
@@ -83,8 +80,11 @@ Patch2:         rust-1.17.0-configure-libpath.patch
 # kernel rh1410097 causes too-small stacks for PIE.
 Patch4:         rust-1.17.0-no-default-pie.patch
 
-# compiletest assumes features of older stage0
-Patch5:         rust-1.17.0-static_in_const.patch
+# Backport rust#42363 to run all tests
+Patch5:         rust-1.18.0-no-fail-fast.patch
+
+# missing a fallback for pipe2 ENOSYS
+Patch6:         rust-1.18.0-pipe2-enosys.patch
 
 # Get the Rust triple for any arch.
 %{lua: function rust_triple(arch)
@@ -187,14 +187,6 @@ Requires:       %{name}-std-static%{?_isa} = %{version}-%{release}
 # https://github.com/rust-lang/rust/issues/11937
 Requires:       gcc
 
-%if 0%{?fedora} >= 26
-# Only non-bootstrap builds should require rust-rpm-macros, because that
-# requires cargo, which might not exist yet.
-%ifnarch %{bootstrap_arches}
-Requires:       rust-rpm-macros
-%endif
-%endif
-
 %{?scl:Requires:%scl_runtime}
 
 # ALL Rust libraries are private, because they don't keep an ABI.
@@ -216,7 +208,7 @@ Requires:       rust-rpm-macros
 
 %if %{without bundled_llvm} && "%{llvm_root}" != "%{_prefix}"
 # https://github.com/rust-lang/rust/issues/40717
-%global rustflags %{?rustflags} -Clink-arg=-L%{llvm_root}/lib
+%global library_path $(%{llvm_root}/bin/llvm-config --libdir)
 %endif
 
 %description
@@ -261,8 +253,8 @@ Summary:        LLDB pretty printers for Rust
 # It could be noarch, but lldb has limited availability
 #BuildArch:      noarch
 
-Requires:       lldb
-Requires:       python-lldb
+Requires:       %{?scl_llvm_prefix}lldb
+Requires:       %{?scl_llvm_prefix}python-lldb
 Requires:       %{name}-debugger-common = %{version}-%{release}
 
 %description lldb
@@ -330,15 +322,17 @@ sed -i.ffi -e '$a #[link(name = "ffi")] extern {}' \
 %patch1 -p1 -b .no-override
 %patch2 -p1 -b .libpath
 %patch4 -p1 -b .no-pie
-%patch5 -p1 -b .static_in_const
+%patch5 -p1 -b .no-fail-fast
+%patch6 -p1 -b .pipe2-enosys
 
 
 %build
 
 # Log some basic hw info to help diagnose failures
-(set +e ; lscpu ; free ; df -h . ; echo)
+(set +e ; uname -a ; lscpu ; free ; df -h . ; echo)
 
 %{?cmake_path:export PATH=%{cmake_path}:$PATH}
+%{?library_path:export LIBRARY_PATH="%{library_path}"}
 %{?rustflags:export RUSTFLAGS="%{rustflags}"}
 
 # We're going to override --libdir when configuring to get rustlib into a
@@ -361,6 +355,12 @@ set -ex
   --enable-vendor \
   --release-channel=%{channel}
 
+%if %with bundled_llvm
+# We occasionally hit OOM linking LLVM if we're too parallel,
+# so build it with bounded parallelism first.
+./x.py build -j2 src/llvm
+%endif
+
 ./x.py dist
 
 %{?scl:EOF}
@@ -368,6 +368,7 @@ set -ex
 
 %install
 %{?cmake_path:export PATH=%{cmake_path}:$PATH}
+%{?library_path:export LIBRARY_PATH="%{library_path}"}
 %{?rustflags:export RUSTFLAGS="%{rustflags}"}
 
 %{?scl:scl enable %scl - << \EOF}
@@ -420,13 +421,14 @@ rm -f %{buildroot}%{rustlibdir}/etc/lldb_*.py*
 
 %check
 %{?cmake_path:export PATH=%{cmake_path}:$PATH}
+%{?library_path:export LIBRARY_PATH="%{library_path}"}
 %{?rustflags:export RUSTFLAGS="%{rustflags}"}
 
 %{?scl:scl enable %scl - << \EOF}
 set -ex
 
 # The results are not stable on koji, so mask errors and just log it.
-./x.py test || :
+./x.py test --no-fail-fast || :
 
 %{?scl:EOF}
 
@@ -489,6 +491,9 @@ set -ex
 
 
 %changelog
+* Tue Jun 13 2017 Josh Stone <jistone@redhat.com> - 1.18.0-1
+- Update to 1.18.0.
+
 * Fri Jun 02 2017 Josh Stone <jistone@redhat.com> - 1.17.0-2
 - Rebuild without bootstrap binaries.
 
