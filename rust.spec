@@ -26,7 +26,7 @@
 %global bootstrap_date 2017-04-27
 
 # Only the specified arches will use bootstrap binaries.
-%global bootstrap_arches %%{rust_arches}
+#global bootstrap_arches %%{rust_arches}
 
 # We generally don't want llvm-static present at all, since llvm-config will
 # make us link statically.  But we can opt in, e.g. to aid LLVM rebases.
@@ -60,7 +60,7 @@
 
 Name:           %{?scl_prefix}rust
 Version:        1.17.0
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        The Rust Programming Language
 License:        (ASL 2.0 or MIT) and (BSD and ISC and MIT)
 # ^ written as: (rust itself) and (bundled libraries)
@@ -489,5 +489,8 @@ set -ex
 
 
 %changelog
+* Fri Jun 02 2017 Josh Stone <jistone@redhat.com> - 1.17.0-2
+- Rebuild without bootstrap binaries.
+
 * Fri Jun 02 2017 Josh Stone <jistone@redhat.com> - 1.17.0-1
 - Bootstrap with the new SCL name.
