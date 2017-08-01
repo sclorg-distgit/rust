@@ -1,0 +1,12 @@
+diff --git a/src/librustc_trans/back/link.rs b/src/librustc_trans/back/link.rs
+index a1703b1c155e..d68bd4867122 100644
+--- a/src/librustc_trans/back/link.rs
++++ b/src/librustc_trans/back/link.rs
+@@ -912,6 +912,7 @@ fn link_args(cmd: &mut Linker,
+         let mut args = args.iter().chain(more_args.iter()).chain(used_link_args.iter());
+ 
+         if get_reloc_model(sess) == llvm::RelocMode::PIC
++            && sess.opts.cg.relocation_model.is_some() // only use PIE if explicitly specified
+             && !args.any(|x| *x == "-static") {
+             cmd.position_independent_executable();
+         }

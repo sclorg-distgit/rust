@@ -1,0 +1,11 @@
+--- rustc-1.17.0-src/configure.libpath	2017-05-10 14:05:41.728387927 -0700
++++ rustc-1.17.0-src/configure	2017-05-10 14:17:33.967898911 -0700
+@@ -678,7 +678,7 @@ then
+     fi
+ 
+     CMD="${CFG_LOCAL_RUST_ROOT}/bin/rustc${BIN_SUF}"
+-    LRV=`LD_LIBRARY_PATH=${CFG_LOCAL_RUST_ROOT}/lib $CMD --version`
++    LRV=`LD_LIBRARY_PATH=${CFG_LOCAL_RUST_ROOT}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}} $CMD --version`
+     if [ $? -ne 0 ]
+     then
+         step_msg "failure while running $CMD --version"
